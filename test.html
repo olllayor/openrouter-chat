@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perplexity UI Clone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        }
+    </script>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="w-64 bg-gray-800 p-4 space-y-4 fixed inset-y-0 left-0 transform -translate-x-full transition-transform duration-500 ease-in-out z-50">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-bold text-blue-400">Perplexity</h1>
+                <button onclick="toggleSidebar()" class="text-white p-2">✖</button>
+            </div>
+            <nav class="space-y-2">
+                <a href="#" class="block px-4 py-2 bg-gray-700 rounded">Home</a>
+                <a href="#" class="block px-4 py-2 hover:bg-gray-700 rounded">Discover</a>
+                <a href="#" class="block px-4 py-2 hover:bg-gray-700 rounded">Spaces</a>
+                <a href="#" class="block px-4 py-2 hover:bg-gray-700 rounded">Library</a>
+            </nav>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col items-center justify-center ml-0">
+            <button onclick="toggleSidebar()" class="absolute top-4 left-4 bg-gray-700 p-2 rounded z-40">☰</button>
+            <h2 class="text-3xl mb-4">What do you want to know?</h2>
+            <div class="relative w-1/2 flex items-center bg-gray-700 rounded-lg p-3">
+                <button class="mr-2 text-gray-400">📎</button>
+                <input type="text" placeholder="Ask anything..." class="w-full bg-transparent text-white outline-none">
+                <button class="ml-2 text-gray-400">🔍</button>
+                <button class="ml-2 bg-blue-500 px-4 py-1 rounded-lg">➤</button>
+            </div>
+            
+            <!-- Cards Section -->
+            <div class="grid grid-cols-3 gap-4 mt-6">
+                <div class="bg-gray-800 p-4 rounded-lg">Try DeepSeek R1</div>
+                <div class="bg-gray-800 p-4 rounded-lg">☽ 34°F Tashkent</div>
+                <div class="bg-gray-800 p-4 rounded-lg">Meta Creates "War Rooms"</div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

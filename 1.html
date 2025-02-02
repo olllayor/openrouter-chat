@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat UI with Streaming Response</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Media query for screens 768px and below */
+        @media (max-width: 768px) {
+
+            /* Hide sidebar by default */
+            #sidebar-content {
+                transform: translateX(-100%);
+            }
+
+            /* Remove left margin for main content */
+            #main-content {
+                margin-left: 0 !important;
+            }
+
+
+
+
+            #sidebar-toggle {
+                display: none;
+            }
+
+            /* Fix input container to the bottom */
+            #input-container {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                z-index: 40;
+                /* Make sure it stays on top */
+                background: white;
+            }
+
+            /* Add bottom padding to main content so messages are not hidden behind the input area */
+            #chat-messages {
+                padding-bottom: 5rem;
+            }
+
+            /* Added styles for mobile model selector */
+            .model-selector-container {
+                position: relative;
+                width: 100%;
+            }
+
+            .model-selector {
+                width: 100%;
+                z-index: 20;
+            }
+        }
+
+        .chat-container {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+        }
+
+        .chat-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
+        }
+
+        .cursor {
+            animation: blink 1s infinite;
+        }
+
+        /* Main content layout */
+        #main-content {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* Chat messages area scrolls and takes remaining space */
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* Input area stays at bottom on larger screens */
+        #input-container {
+            position: relative;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen">
+    <div class="flex relative">
+        <!-- Sidebar Section -->
+        <aside class="fixed z-20 h-screen">
+            <div id="sidebar-content"
+                class="w-64 h-full bg-white border-r border-gray-200 p-4 transition-transform duration-300 ease-in-out">
+                <nav>
+                    <ul class="space-y-2">
+                        <li><a href="#" class="block px-2 py-1 rounded hover:bg-gray-100">Home</a></li>
+                        <li><a href="#" class="block px-2 py-1 rounded hover:bg-gray-100">Chat</a></li>
+                        <li><a href="#" class="block px-2 py-1 rounded hover:bg-gray-100">Contacts</a></li>
+                        <li><a href="#" class="block px-2 py-1 rounded hover:bg-gray-100">Settings</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- Toggle Button -->
+        <button id="sidebar-toggle"
+            class="fixed z-30 top-4 left-64 p-2 border border-gray-300 rounded-full bg-white hover:bg-gray-200 transition-all duration-300"
+            aria-label="Toggle Sidebar">
+            <svg id="chevron-left" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="ai ai-ChevronLeft">
+                <path d="M15 4l-8 8 8 8" />
+            </svg>
+            <svg id="chevron-right" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="ai ai-ChevronRight hidden">
+                <path d="M8 4l8 8-8 8" />
+            </svg>
+        </button>
+
+        <!-- Main Chat Area -->
+        <main id="main-content" class="flex-1 ml-64 transition-all duration-300 min-h-screen">
+            <!-- Updated Model Selector -->
+            <div class="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
+                <div class="max-w-[768px] mx-auto p-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-1">
+                            <div class="relative inline-block">
+                                <div class="flex items-center gap-x-1 px-2 py-1 min-w-[160px] text-sm">
+                                    <select class="appearance-none bg-transparent focus:outline-none">
+                                        <option value="google/gemini-2.0-flash-thinking-exp:free">Gemini 2.0 Flash
+                                            Thinking</option>
+                                        <option value="google/gemini-2.0-flash-exp:free">Gemini Flash 2.0 Exp</option>
+                                        <option value="deepseek/deepseek-r1:free">DeepSeek R1</option>
+                                        <option value="google/learnlm-1.5-pro-experimental:free">LearnLM 1.5 Pro Exp
+                                        </option>
+                                    </select>
+                                    <svg class="h-4 w-4 text-gray-400" xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd"
+                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                            clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-gray-500">DeepSeek R1</span>
+                            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages Area -->
+            <div id="chat-messages" class="flex-1 overflow-y-auto chat-container">
+                <div class="max-w-[768px] mx-auto p-4">
+                    <!-- Messages will be added here dynamically -->
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div id="input-container" class="w-full bg-white">
+                <div class="max-w-[768px] mx-auto">
+                    <div id="loading-state" class="hidden mt-2 text-sm text-gray-500">
+                        Thinking...
+                    </div>
+                    <div
+                        class="flex flex-col items-end w-full p-4 rounded-2xl border border-gray-300 bg-white shadow-sm hover:shadow-md transition-shadow">
+                        <textarea id="chat-input" placeholder="Type a message..." rows="1"
+                            class="w-full p-2 border-none focus:outline-none resize-none overflow-y-auto"></textarea>
+                        <div class="flex items-center justify-between w-full mt-2">
+                            <div class="flex items-center gap-2">
+                                <button id="attach-button"
+                                    class="p-2 border border-gray-300 rounded-full hover:bg-gray-200 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path
+                                            d="M6 7.91V16a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V6a4 4 0 0 0-4-4v0a4 4 0 0 0-4 4v9.182a2 2 0 0 0 2 2v0a2 2 0 0 0 2-2V8">
+                                        </path>
+                                    </svg>
+                                </button>
+                                <button id="search-button"
+                                    class="p-2 border border-gray-300 rounded-full hover:bg-gray-200 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(90 12 12)"></ellipse>
+                                        <path d="M2 12h20"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button id="stop-button"
+                                    class="hidden p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <rect x="6" y="6" width="12" height="12"></rect>
+                                    </svg>
+                                </button>
+                                <button id="submit-button"
+                                    class="p-2 border border-gray-300 rounded-full hover:bg-gray-200 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M12 20V4"></path>
+                                        <path d="M5 11l7-7 7 7"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Get elements
+            const sidebar = document.getElementById("sidebar-content");
+            const mainContent = document.getElementById("main-content");
+            const toggleButton = document.getElementById("sidebar-toggle");
+            const chatMessages = document.getElementById("chat-messages").querySelector("div");
+            const chatInput = document.getElementById("chat-input");
+            const submitButton = document.getElementById("submit-button");
+            const stopButton = document.getElementById("stop-button");
+            const loadingState = document.getElementById("loading-state");
+
+            let isSidebarOpen = window.innerWidth > 768;
+            let isLoading = false;
+
+            // Initial mobile setup: hide sidebar if screen is small
+            if (window.innerWidth <= 768) {
+                sidebar.classList.add("-translate-x-full");
+                mainContent.classList.remove("ml-64");
+                mainContent.classList.add("ml-0");
+                toggleButton.classList.remove("left-64");
+                toggleButton.classList.add("left-4");
+                isSidebarOpen = false;
+            }
+
+            // Resize handler to adjust layout and textarea sizing
+            window.addEventListener('resize', () => {
+                if (window.innerWidth <= 768 && isSidebarOpen) {
+                    sidebar.classList.add("-translate-x-full");
+                    mainContent.classList.remove("ml-64");
+                    mainContent.classList.add("ml-0");
+                    toggleButton.classList.remove("left-64");
+                    toggleButton.classList.add("left-4");
+                    isSidebarOpen = false;
+                }
+                // Adjust textarea size on resize
+                resizeTextarea();
+            });
+
+            // Function to resize textarea dynamically
+            function resizeTextarea() {
+                chatInput.style.height = "auto";
+                const maxHeight = Math.min(200, window.innerHeight * 0.4); // 40% of viewport height or 200px
+                chatInput.style.height = Math.min(chatInput.scrollHeight, maxHeight) + "px";
+            }
+
+            // Add chat messages with typing animation if from AI
+            function addChatMessage(message, isUser = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
+
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = `max-w-[70%] rounded-2xl p-3 ${isUser ? 'bg-[#E8E8E880] text-black' : 'bg-white'}`;
+
+                if (!isUser) {
+                    const textSpan = document.createElement('span');
+                    bubbleDiv.appendChild(textSpan);
+
+                    const cursor = document.createElement('span');
+                    cursor.className = 'cursor';
+                    cursor.textContent = '|';
+                    bubbleDiv.appendChild(cursor);
+
+                    messageDiv.appendChild(bubbleDiv);
+                    chatMessages.appendChild(messageDiv);
+
+                    let index = 0;
+                    const interval = setInterval(() => {
+                        if (index < message.length) {
+                            textSpan.textContent += message[index];
+                            index++;
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        } else {
+                            clearInterval(interval);
+                            cursor.remove();
+                        }
+                    }, 50);
+                } else {
+                    bubbleDiv.textContent = message;
+                    messageDiv.appendChild(bubbleDiv);
+                    chatMessages.appendChild(messageDiv);
+                }
+
+                // Scroll to the bottom after adding a message
+                setTimeout(() => {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }, 0);
+            }
+
+            // Handle message submission
+            function handleSubmit(event) {
+                event.preventDefault();
+                const value = chatInput.value.trim();
+                if (!value) return;
+
+                addChatMessage(value, true);
+
+                isLoading = true;
+                updateLoadingState();
+
+                setTimeout(() => {
+                    const aiResponse = "I received your message: " + value;
+                    addChatMessage(aiResponse, false);
+
+                    chatInput.value = "";
+                    isLoading = false;
+                    updateLoadingState();
+                    resizeTextarea();
+                }, 1000);
+            }
+
+            // Handle stop (cancelling) of message processing
+            function handleStop() {
+                isLoading = false;
+                updateLoadingState();
+            }
+
+            // Update the UI for loading state
+            function updateLoadingState() {
+                if (isLoading) {
+                    submitButton.classList.add("hidden");
+                    stopButton.classList.remove("hidden");
+                    loadingState.classList.remove("hidden");
+                } else {
+                    submitButton.classList.remove("hidden");
+                    stopButton.classList.add("hidden");
+                    loadingState.classList.add("hidden");
+                }
+            }
+
+            // Sidebar toggle event listener
+            toggleButton.addEventListener("click", () => {
+                sidebar.classList.toggle("-translate-x-full");
+                mainContent.classList.toggle("ml-64");
+                mainContent.classList.toggle("ml-0");
+                toggleButton.classList.toggle("left-64");
+                toggleButton.classList.toggle("left-4");
+                isSidebarOpen = !isSidebarOpen;
+            });
+
+            // Adjust textarea size on input
+            chatInput.addEventListener("input", resizeTextarea);
+
+            // Send message on Enter (without shift)
+            chatInput.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSubmit(event);
+                }
+            });
+
+            // Initialize textarea height
+            resizeTextarea();
+
+            // Attach click events for submit and stop buttons
+            submitButton.addEventListener("click", handleSubmit);
+            stopButton.addEventListener("click", handleStop);
+
+            // Handle viewport changes for mobile (ensuring input is visible)
+            window.visualViewport.addEventListener('resize', () => {
+                document.documentElement.style.height = `${window.visualViewport.height}px`;
+                resizeTextarea();
+
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile && document.activeElement === chatInput) {
+                    window.scrollTo(0, document.body.scrollHeight);
+                    requestAnimationFrame(() => {
+                        chatInput.scrollIntoView({ block: 'nearest' });
+                    });
+                }
+            });
+
+            // On focus, ensure the input scrolls into view on mobile devices
+            chatInput.addEventListener('focus', () => {
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    requestAnimationFrame(() => {
+                        chatInput.scrollIntoView({ block: 'end' });
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
