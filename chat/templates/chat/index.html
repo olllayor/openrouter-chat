@@ -5,9 +5,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chat UI with Streaming Response</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Response formatter (if needed) -->
     <script src="{% static 'js/responseFormatter.js' %}" type="module"></script>
+    <!-- KaTeX for math rendering -->
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
@@ -20,25 +24,18 @@
       integrity="sha384-zDnlE1jSYDr5lr9/eYDFtD3ZL9cE/1WKoPykZvgcW5SZvR6+GkRxRpuVv5T1fj8c"
       crossorigin="anonymous"
     ></script>
-
     <style>
       /* Media query for screens 768px and below */
       @media (max-width: 768px) {
-        /* Hide sidebar by default */
         #sidebar-content {
           transform: translateX(-100%);
         }
-
-        /* Remove left margin for main content */
         #main-content {
           margin-left: 0 !important;
         }
-
         #sidebar-toggle {
           display: none;
         }
-
-        /* Fix input container to the bottom */
         #input-container {
           position: fixed;
           bottom: 0;
@@ -47,39 +44,30 @@
           z-index: 40;
           background: white;
         }
-
-        /* Add bottom padding to main content so messages are not hidden behind the input area */
         #chat-messages {
           padding-bottom: 5rem;
         }
-
-        /* Added styles for mobile model selector */
         .model-selector-container {
           position: relative;
           width: 100%;
         }
-
         .model-selector {
           width: 100%;
           z-index: 20;
         }
       }
-
-      /* Chat container styles including smooth scrolling */
+      /* Chat container styles with smooth scrolling */
       .chat-container {
         scrollbar-width: thin;
         scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
-        scroll-behavior: smooth; /* Enables smooth scrolling */
+        scroll-behavior: smooth;
       }
-
       .chat-container::-webkit-scrollbar {
         width: 6px;
       }
-
       .chat-container::-webkit-scrollbar-track {
         background: transparent;
       }
-
       @keyframes blink {
         0%,
         100% {
@@ -89,24 +77,17 @@
           opacity: 0;
         }
       }
-
-      .cursor {
-        animation: blink 1s infinite;
-      }
-
       /* Main content layout */
       #main-content {
         display: flex;
         flex-direction: column;
         height: 100vh;
       }
-
       /* Chat messages area scrolls and takes remaining space */
       #chat-messages {
         flex: 1;
         overflow-y: auto;
       }
-
       /* Input area stays at bottom on larger screens */
       #input-container {
         position: relative;
@@ -120,29 +101,24 @@
         margin: 1em 0;
         overflow-x: auto;
       }
-
       .chat-container code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
           "Liberation Mono", "Courier New", monospace;
       }
-
       .chat-container p {
         margin-bottom: 0.5em;
       }
-
       .chat-container ul,
       .chat-container ol {
         margin: 0.5em 0;
         padding-left: 1.5em;
       }
-
       .chat-container blockquote {
         border-left: 4px solid #e5e7eb;
         padding-left: 1em;
         margin: 0.5em 0;
         color: #4b5563;
       }
-
       .chat-container h1,
       .chat-container h2,
       .chat-container h3,
@@ -157,7 +133,7 @@
   <body class="min-h-screen">
     <div class="flex relative">
       <!-- Sidebar Section -->
-      <aside class="fixed z-20 h-screen">
+      <aside class="fixed z-20 h-screen" aria-label="Sidebar">
         <div
           id="sidebar-content"
           class="w-64 h-full bg-white border-r border-gray-200 p-4 transition-transform duration-300 ease-in-out"
@@ -232,54 +208,62 @@
         id="main-content"
         class="flex-1 ml-64 transition-all duration-300 min-h-screen"
       >
-        <!-- Updated Model Selector -->
+        <!-- Model Selector -->
         <div
+          id="model-selector-container"
           class="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm"
         >
-          <div class="max-w-[768px] mx-auto p-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-1">
-                <div class="relative inline-block">
-                  <div
-                    class="flex items-center gap-x-1 px-2 py-1 min-w-[160px] text-sm"
+          <div
+            class="max-w-[768px] mx-auto p-4 flex items-center justify-between"
+            id="model-selector-content"
+          >
+            <!-- Left side: model select dropdown (visible until first message) -->
+            <div class="flex items-center space-x-1" id="model-select-wrapper">
+              <div class="relative inline-block">
+                <div
+                  class="flex items-center gap-x-1 px-2 py-1 min-w-[160px] text-sm"
+                >
+                  <select
+                    class="appearance-none bg-transparent focus:outline-none"
                   >
-                    <select
-                      class="appearance-none bg-transparent focus:outline-none"
-                    >
-                      <option value="google/gemini-2.0-flash-exp:free">
-                        Gemini Flash 2.0 Exp
-                      </option>
-                      <option value="google/gemini-2.0-flash-thinking-exp:free">
-                        Gemini 2.0 Flash Thinking
-                      </option>
-                      <option value="deepseek/deepseek-r1:free">
-                        DeepSeek R1
-                      </option>
-                      <option value="google/learnlm-1.5-pro-experimental:free">
-                        LearnLM 1.5 Pro Exp
-                      </option>
-                    </select>
-                    <svg
-                      class="h-4 w-4 text-gray-400"
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fill-rule="evenodd"
-                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                        clip-rule="evenodd"
-                      />
-                    </svg>
-                  </div>
+                    <option value="google/gemini-2.0-flash-exp:free">
+                      Gemini Flash 2.0 Exp
+                    </option>
+                    <option value="google/gemini-2.0-flash-thinking-exp:free">
+                      Gemini 2.0 Flash Thinking
+                    </option>
+                    <option value="deepseek/deepseek-r1:free">
+                      DeepSeek R1
+                    </option>
+                    <option value="google/learnlm-1.5-pro-experimental:free">
+                      LearnLM 1.5 Pro Exp
+                    </option>
+                  </select>
+                  <svg
+                    class="h-4 w-4 text-gray-400"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
                 </div>
               </div>
-              <div class="flex items-center space-x-2">
-                <span class="text-xs text-gray-500" id="selected-model-name"
-                  >DeepSeek R1</span
-                >
-                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-              </div>
+            </div>
+            <!-- Right side: displays the selected model name -->
+            <div class="flex items-center space-x-2">
+              <span
+                class="text-xs text-gray-500"
+                id="selected-model-name"
+              ></span>
+              <div
+                class="w-2 h-2 bg-green-500 rounded-full"
+                aria-hidden="true"
+              ></div>
             </div>
           </div>
         </div>
@@ -287,7 +271,7 @@
         <!-- Chat Messages Area -->
         <div id="chat-messages" class="flex-1 overflow-y-auto chat-container">
           <div class="max-w-[768px] mx-auto p-4">
-            <!-- Messages will be added here dynamically -->
+            <!-- Messages will be added dynamically -->
           </div>
         </div>
 
@@ -309,8 +293,9 @@
               <div class="flex items-center justify-between w-full mt-2">
                 <div class="flex items-center gap-2">
                   <button
-                    id="upload-image-button"
+                    id="attach-button"
                     class="p-2 border border-gray-300 rounded-full hover:bg-gray-200 transition-colors"
+                    aria-label="Attach file"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -329,7 +314,8 @@
                   </button>
                   <button
                     id="search-button"
-                    class="p-2 border border-gray-300 rounded-full hover:bg-blue-300 transition-colors"
+                    class="p-2 border border-gray-300 rounded-full hover:bg-gray-200 transition-colors"
+                    aria-label="Search"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -357,6 +343,7 @@
                   <button
                     id="stop-button"
                     class="hidden p-2 border border-gray-300 rounded-full hover:bg-gray-100 transition-colors"
+                    aria-label="Stop streaming"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -373,8 +360,8 @@
                   </button>
                   <button
                     id="submit-button"
-                    aria-label="Send message"
-                    class="p-2 border border-gray-300 rounded-full hover:bg-black hover:text-white transition-colors"
+                    class="p-2 border border-gray-300 rounded-full hover:bg-gray-200 transition-colors"
+                    aria-label="Submit message"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -398,37 +385,46 @@
       </main>
     </div>
 
+    <!-- Main JavaScript -->
     <script>
       document.addEventListener("DOMContentLoaded", () => {
-        // Sidebar and layout elements
+        // Element selectors for layout and chat UI
         const sidebar = document.getElementById("sidebar-content");
         const mainContent = document.getElementById("main-content");
         const toggleButton = document.getElementById("sidebar-toggle");
         const chatMessagesContainer = document
           .getElementById("chat-messages")
           .querySelector("div");
-
-        // Chat UI elements
         const chatInput = document.getElementById("chat-input");
         const submitButton = document.getElementById("submit-button");
         const stopButton = document.getElementById("stop-button");
         const loadingState = document.getElementById("loading-state");
-        const selectedModelName = document.getElementById(
-          "selected-model-name"
-        );
 
         let isSidebarOpen = window.innerWidth > 768;
         let isLoading = false;
-        let abortController = null; // For canceling the streaming request
+        let abortController = null; // For canceling streaming requests
+        let hasSentMessage = false;
 
-        // Show selected model name in the UI
-        const modelSelector = document.querySelector("select");
-        modelSelector.addEventListener("change", () => {
-          selectedModelName.textContent =
-            modelSelector.selectedOptions[0].textContent;
+        // Sidebar toggle functionality
+        toggleButton.addEventListener("click", () => {
+          if (isSidebarOpen) {
+            // Hide sidebar
+            sidebar.classList.add("-translate-x-full");
+            mainContent.classList.remove("ml-64");
+            mainContent.classList.add("ml-0");
+            toggleButton.classList.remove("left-64");
+            toggleButton.classList.add("left-4");
+            isSidebarOpen = false;
+          } else {
+            // Show sidebar
+            sidebar.classList.remove("-translate-x-full");
+            mainContent.classList.remove("ml-0");
+            mainContent.classList.add("ml-64");
+            toggleButton.classList.remove("left-4");
+            toggleButton.classList.add("left-64");
+            isSidebarOpen = true;
+          }
         });
-        selectedModelName.textContent =
-          modelSelector.selectedOptions[0].textContent;
 
         // Adjust sidebar state based on screen size
         if (!isSidebarOpen) {
@@ -438,33 +434,6 @@
           toggleButton.classList.remove("left-64");
           toggleButton.classList.add("left-4");
         }
-
-        // Toggle Sidebar Functionality
-        toggleButton.addEventListener("click", () => {
-          if (isSidebarOpen) {
-            sidebar.classList.add("-translate-x-full");
-            mainContent.classList.remove("ml-64");
-            mainContent.classList.add("ml-0");
-            // Swap SVG icons: hide left arrow and show right arrow
-            toggleButton.querySelector("#chevron-left").classList.add("hidden");
-            toggleButton
-              .querySelector("#chevron-right")
-              .classList.remove("hidden");
-            isSidebarOpen = false;
-          } else {
-            sidebar.classList.remove("-translate-x-full");
-            mainContent.classList.remove("ml-0");
-            mainContent.classList.add("ml-64");
-            // Swap SVG icons: show left arrow and hide right arrow
-            toggleButton
-              .querySelector("#chevron-left")
-              .classList.remove("hidden");
-            toggleButton
-              .querySelector("#chevron-right")
-              .classList.add("hidden");
-            isSidebarOpen = true;
-          }
-        });
 
         window.addEventListener("resize", () => {
           if (window.innerWidth <= 768 && isSidebarOpen) {
@@ -477,105 +446,111 @@
           }
         });
 
-        // Check if visualViewport is supported before using it
-        if (window.visualViewport) {
-          window.visualViewport.addEventListener("resize", () => {
-            document.documentElement.style.height = `${window.visualViewport.height}px`;
-            resizeTextarea();
+        // Improved mobile viewport handling
+        window.visualViewport.addEventListener("resize", () => {
+          document.documentElement.style.height = `${window.visualViewport.height}px`;
+          resizeTextarea();
 
-            const isMobile = window.innerWidth <= 768;
-            if (isMobile && document.activeElement === chatInput) {
-              // Scroll the chat container to the bottom smoothly
-              chatMessagesContainer.parentElement.scrollTo({
-                top: chatMessagesContainer.parentElement.scrollHeight,
+          const isMobile = window.innerWidth <= 768;
+          if (isMobile && document.activeElement === chatInput) {
+            chatMessagesContainer.parentElement.scrollTo({
+              top: chatMessagesContainer.parentElement.scrollHeight,
+              behavior: "smooth",
+            });
+            requestAnimationFrame(() => {
+              chatInput.scrollIntoView({
+                block: "nearest",
                 behavior: "smooth",
               });
-              // Ensure the chat input is visible
-              requestAnimationFrame(() => {
-                chatInput.scrollIntoView({
-                  block: "nearest",
-                  behavior: "smooth",
-                });
-              });
-            }
-          });
-
-        };
-
-        // Add focus handler for mobile input
-        chatInput.addEventListener("focus", () => {
-          if (window.innerWidth <= 768) {
-            chatInput.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
           }
         });
 
-        // Utility function to automatically resize the textarea based on content
+        // Scroll chat input into view when focused (mobile)
+        chatInput.addEventListener("focus", () => {
+          if (window.innerWidth <= 768) {
+            requestAnimationFrame(() => {
+              chatInput.scrollIntoView({ block: "end", behavior: "smooth" });
+            });
+          }
+        });
+
+        // Automatically resize the textarea based on content
         function resizeTextarea() {
           chatInput.style.height = "auto";
           const maxHeight = Math.min(200, window.innerHeight * 0.4); // 40% of viewport height or 200px
           chatInput.style.height =
             Math.min(chatInput.scrollHeight, maxHeight) + "px";
-          chatInput.style.overflowY =
-            chatInput.scrollHeight > maxHeight ? "auto" : "hidden";
         }
 
-        // Function to auto-scroll to the latest message
+        // Scroll to the latest message smoothly
         function scrollToLatestMessage() {
           chatMessagesContainer.parentElement.scrollTo({
             top: chatMessagesContainer.parentElement.scrollHeight,
             behavior: "smooth",
           });
         }
-
+        // Add a chat message to the UI
         function addChatMessage(message, isUser = false, isStreaming = false) {
+          // Create the container for the message (aligned left for AI and right for user)
           const messageDiv = document.createElement("div");
           messageDiv.className = `flex ${
             isUser ? "justify-end" : "justify-start"
           } mb-4`;
 
+          // Create the message bubble
           const bubbleDiv = document.createElement("div");
           bubbleDiv.className = `max-w-[70%] rounded-2xl p-3 ${
             isUser ? "bg-[#E8E8E880] text-black" : "bg-white"
           }`;
 
-          if (!isUser && isStreaming) {
+          // Check if the message is an error message (only for AI messages)
+          if (!isUser && message.startsWith("Error:")) {
+            // Set error-specific styling
+            bubbleDiv.textContent = message; // Display the error message as plain text
+            bubbleDiv.style.backgroundColor = "#fdecea"; // Light red background
+            bubbleDiv.style.color = "#b71c1c"; // Dark red text for error emphasis
+          }
+          // For AI streaming messages, create a live-updating span with a blinking cursor
+          else if (!isUser && isStreaming) {
             const textSpan = document.createElement("span");
             bubbleDiv.appendChild(textSpan);
             const cursor = document.createElement("span");
-            cursor.className = "cursor"; // Make sure CSS for .cursor is enabled
-            cursor.textContent = "...";
+            cursor.className = "cursor";
+            cursor.textContent = "|";
             bubbleDiv.appendChild(cursor);
             messageDiv.appendChild(bubbleDiv);
             chatMessagesContainer.appendChild(messageDiv);
             scrollToLatestMessage();
             return { textSpan, cursor };
           } else {
-            // For user messages, just use plain text
+            // For user messages or completed AI messages
             if (isUser) {
               bubbleDiv.textContent = message;
             } else {
-              // For AI messages, parse markdown
+              // Parse markdown for AI messages
               bubbleDiv.innerHTML = marked.parse(message);
-              // Add syntax highlighting classes to code blocks
+              // Add syntax highlighting classes for code blocks
               bubbleDiv.querySelectorAll("pre code").forEach((block) => {
                 block.className =
                   "language-javascript rounded-md p-2 bg-gray-100";
               });
-              // Style inline code
               bubbleDiv
                 .querySelectorAll("code:not(pre code)")
                 .forEach((block) => {
                   block.className = "bg-gray-100 rounded px-1";
                 });
             }
-            messageDiv.appendChild(bubbleDiv);
-            chatMessagesContainer.appendChild(messageDiv);
-            scrollToLatestMessage();
-            return null;
           }
+
+          // Append the bubble to the message container and update UI
+          messageDiv.appendChild(bubbleDiv);
+          chatMessagesContainer.appendChild(messageDiv);
+          scrollToLatestMessage();
+          return null;
         }
 
-        // Update the UI state (buttons and loading text) during streaming
+        // Update UI state based on whether streaming is active
         function updateLoadingState() {
           if (isLoading) {
             submitButton.classList.add("hidden");
@@ -588,35 +563,15 @@
           }
         }
 
-        // Function to show a server busy message
-        function showServerBusyMessage() {
-          const messageDiv = document.createElement("div");
-          messageDiv.className = "flex justify-center mb-4";
-          const bubbleDiv = document.createElement("div");
-          bubbleDiv.className =
-            "max-w-[70%] rounded-2xl p-3 bg-red-100 text-red-800";
-          bubbleDiv.textContent = "Server is busy, please try again later.";
-          messageDiv.appendChild(bubbleDiv);
-          chatMessagesContainer.appendChild(messageDiv);
-          scrollToLatestMessage();
-        }
-
+        // Send a chat message and stream the AI response
         async function sendChatMessage(prompt) {
-          const timeoutDuration = 10000; // 10 seconds timeout
           abortController = new AbortController();
           const signal = abortController.signal;
-          let timeoutId;
-        
+
           try {
             const modelSelector = document.querySelector("select");
             const selectedModel = modelSelector.value;
-        
-            // Set a timeout to abort the request if it takes too long
-            timeoutId = setTimeout(() => {
-              abortController.abort();
-              showServerBusyMessage();
-            }, timeoutDuration);
-        
+
             const response = await fetch("/api/ask_chat/", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -624,78 +579,77 @@
                 prompt: prompt,
                 model: selectedModel,
               }),
+              cache: "no-cache",
               signal: signal,
             });
-        
+            console.log(response); // Check the response object in the console
+
             if (!response.ok) {
               throw new Error("Network response was not ok");
             }
-        
+
             const streamingMessage = addChatMessage("", false, true);
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let done = false;
             let accumulatedText = "";
-        
+
             while (!done) {
               const { value, done: doneReading } = await reader.read();
               done = doneReading;
               const chunk = decoder.decode(value, { stream: true });
               accumulatedText += chunk;
-        
-              // Log the chunk for debugging
-              console.log("Received chunk:", chunk);
-        
-              // Parse the accumulated text as markdown
-              streamingMessage.textSpan.innerHTML = marked.parse(accumulatedText);
-        
-              // Add syntax highlighting classes to code blocks
-              streamingMessage.textSpan
-                .querySelectorAll("pre code")
-                .forEach((block) => {
-                  block.className = "language-javascript rounded-md p-2 bg-gray-100";
-                });
-        
-              // Style inline code
-              streamingMessage.textSpan
-                .querySelectorAll("code:not(pre code)")
-                .forEach((block) => {
-                  block.className = "bg-gray-100 rounded px-1";
-                });
-        
-              scrollToLatestMessage();
+              streamingMessage.textSpan.innerHTML =
+                marked.parse(accumulatedText);
+              // (Rest of your formatting and scrolling code)
             }
-        
-            // Log the final accumulated text for debugging
-            console.log("Final response:", accumulatedText);
-        
             streamingMessage.cursor.remove();
           } catch (error) {
             if (error.name === "AbortError") {
-              console.log("Streaming aborted by the user or due to timeout.");
-              showServerBusyMessage();
+              console.log("Streaming aborted by the user.");
             } else {
               console.error("Error during fetch:", error);
-              showServerBusyMessage();
             }
           } finally {
-            clearTimeout(timeoutId);
             isLoading = false;
             updateLoadingState();
+            abortController = null;
           }
         }
 
-        // Handle chat form submission
+        // Handle the form submission for sending messages
         function handleSubmit(event) {
           event.preventDefault();
           const prompt = chatInput.value.trim();
           if (!prompt) return;
-          // Add user message bubble to the chat
+          // Add the user message to the chat
           addChatMessage(prompt, true);
-          // Clear the input field and resize it
           chatInput.value = "";
           resizeTextarea();
-          // Set loading state and start streaming
+
+          // Hide model selector on the first message submission
+          if (!hasSentMessage) {
+            hasSentMessage = true;
+            const modelSelectorContainer = document.getElementById(
+              "model-selector-container"
+            );
+     
+            // Alternatively, if you want to only hide the dropdown portion and center the model name:
+            const modelSelectWrapper = document.getElementById("model-select-wrapper");
+            if (modelSelectWrapper) {
+              modelSelectWrapper.style.display = "none";
+            }
+            // Now center the model name container:
+            // Get the parent container of the selected model name and adjust its styling:
+            const modelSelectorContent = document.getElementById(
+              "model-selector-content"
+            );
+            if (modelSelectorContent) {
+              modelSelectorContent.classList.remove("justify-between");
+              modelSelectorContent.classList.add("justify-center");
+            }
+          }
+
           isLoading = true;
           updateLoadingState();
           sendChatMessage(prompt);
@@ -714,7 +668,6 @@
         // Event listeners for input and buttons
         chatInput.addEventListener("input", resizeTextarea);
         chatInput.addEventListener("keydown", (event) => {
-          // Submit on Enter without Shift (for newline)
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
             handleSubmit(event);
@@ -724,6 +677,20 @@
         stopButton.addEventListener("click", handleStop);
       });
 
+      // Show selected model name in id=selected-model-name
+      document.querySelector("select").addEventListener("change", (event) => {
+        const selectedModelName = event.target.selectedOptions[0].textContent;
+        document.getElementById("selected-model-name").textContent =
+          selectedModelName;
+      });
+
+      // Also show initial selection on page load
+      document.addEventListener("DOMContentLoaded", () => {
+        const select = document.querySelector("select");
+        const selectedModelName = select.selectedOptions[0].textContent;
+        document.getElementById("selected-model-name").textContent =
+          selectedModelName;
+      });
     </script>
   </body>
 </html>

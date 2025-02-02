@@ -11,6 +11,9 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -55,7 +58,7 @@ ROOT_URLCONF = "exam_prep.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        'DIRS': [BASE_DIR / 'templates'], # Add this line
+        'DIRS': [], # Add this line
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -116,8 +119,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "static"  # Add this line
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    BASE_DIR / 'chat' / 'static',
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -131,3 +136,7 @@ SITE_URL = 'http://localhost:8000'  # Update for production
 
 AUTH_USER_MODEL = 'auth.User'
 LOGIN_URL = '/admin/login/' 
+
+
+# settings.py
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
