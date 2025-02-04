@@ -6,10 +6,13 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import (
     login_required,
-)  # If needed for login protection
+)
 from .models import UserProfile, Chat, Message
 from django.contrib.auth.models import User
 from dotenv import load_dotenv
+from django.http import HttpResponseForbidden
+from django.urls import reverse
+from django.conf import settings
 
 # Load environment variables
 load_dotenv()
@@ -48,13 +51,36 @@ def get_models(request):
     return JsonResponse(response.json(), safe=False)
 
 
+def save_messages(chat, prompt, response_content, is_error=False):
+    Message.objects.create(chat=chat, sender="user", content=prompt)
+    Message.objects.create(
+        chat=chat,
+        sender="ai",
+        content=f"Error: {response_content}" if is_error else response_content,
+    )
+
+
+@login_required
 @csrf_exempt
 def ask_chat(request):
-    # Only allow POST requests
+    if not request.user.is_authenticated:
+        return JsonResponse(
+            {
+                "error": "Please login to continue",
+                "login_url": reverse("admin:login"),  # Or your custom login URL
+            },
+            status=401,
+        )
+
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed."}, status=405)
 
-    # Parse the request body
+    # Add CSRF check for AJAX
+    if not request.headers.get("X-CSRFToken") and not request.META.get(
+        "HTTP_X_CSRFTOKEN"
+    ):
+        return HttpResponseForbidden("CSRF token missing")
+
     try:
         data = json.loads(request.body)
         prompt = data.get("prompt", "")
@@ -63,22 +89,14 @@ def ask_chat(request):
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
     user = request.user
-
-    # 1. Retrieve or create Chat session
     chat_id = request.session.get("chat_id")
-    if chat_id:
-        try:
-            chat = Chat.objects.get(id=chat_id, user=user)
-        except Chat.DoesNotExist:
-            # If the chat doesn't exist, create a new one
-            chat = Chat.objects.create(user=user, title=f"Chat with {model}")
-            request.session["chat_id"] = chat.id
-    else:
-        # If no chat_id in session, create a new chat
-        chat = Chat.objects.create(user=user, title=f"Chat with {model}")
-        request.session["chat_id"] = chat.id
+    chat = (
+        Chat.objects.get(id=chat_id, user=user)
+        if chat_id
+        else Chat.objects.create(user=user, title=f"Chat with {model}")
+    )
+    request.session["chat_id"] = chat.id
 
-    # 2. Fetch User API Token
     api_key_to_use = OPENROUTER_API_KEY
     try:
         user_profile = UserProfile.objects.get(user=user)
@@ -87,30 +105,22 @@ def ask_chat(request):
     except UserProfile.DoesNotExist:
         pass
 
-    # 3. Build the message history
-    messages_history = []
-    previous_messages = Message.objects.filter(chat=chat).order_by("created_at")
-    for msg in previous_messages:
-        messages_history.append({"role": msg.sender, "content": msg.content})
+    messages_history = [
+        {"role": msg.sender, "content": msg.content}
+        for msg in Message.objects.filter(chat=chat).order_by("created_at")
+    ]
     messages_history.append({"role": "user", "content": prompt})
 
-    # 4. Create the payload for the OpenRouter API
-    payload = {
-        "model": model,
-        "messages": messages_history,
-        "stream": True,
-    }
-
+    payload = {"model": model, "messages": messages_history, "stream": True}
     headers = {
         "Authorization": f"Bearer {api_key_to_use}",
         "Content-Type": "application/json",
-        "HTTP-Referer": request.META.get("HTTP_REFERER", ""),  # Add referer header
-        "X-Title": "Django Chat App",  # Add a title header
+        "HTTP-Referer": request.META.get("HTTP_REFERER", ""),
+        "X-Title": "Django Chat App",
     }
 
     def event_stream():
         ai_response_content = ""
-
         try:
             response = requests.post(
                 OPENROUTER_CHAT_ENDPOINT,
@@ -120,7 +130,6 @@ def ask_chat(request):
                 timeout=60,
             )
 
-            # Handle non-200 responses
             if response.status_code != 200:
                 error_msg = f"OpenRouter API error: {response.status_code}"
                 try:
@@ -129,66 +138,51 @@ def ask_chat(request):
                         error_msg = error_data["error"].get("message", error_msg)
                 except:
                     pass
+                save_messages(chat, prompt, error_msg, is_error=True)
                 yield f"Error: {error_msg}\n"
-                Message.objects.create(chat=chat, sender="user", content=prompt)
-                Message.objects.create(
-                    chat=chat, sender="ai", content=f"Error: {error_msg}"
-                )
                 return
 
-            # Process the streaming response
             for line in response.iter_lines(decode_unicode=True):
                 if not line or line.isspace():
                     continue
 
-                if line.startswith(": "):  # Skip processing messages
+                # Skip [DONE] messages
+                if line == "data: [DONE]" or line == "[DONE]":
                     continue
 
                 if line.startswith("data: "):
-                    line = line[6:]  # Remove "data: " prefix
+                    line = line[6:]
 
                 try:
                     json_data = json.loads(line)
-
-                    # Handle error in response data
                     if "error" in json_data:
                         error_msg = json_data["error"].get("message", "Unknown error")
-                        if isinstance(error_msg, dict) and "message" in error_msg:
-                            error_msg = error_msg["message"]
+                        save_messages(chat, prompt, error_msg, is_error=True)
                         yield f"Error: {error_msg}\n"
-                        Message.objects.create(chat=chat, sender="user", content=prompt)
-                        Message.objects.create(
-                            chat=chat, sender="ai", content=f"Error: {error_msg}"
-                        )
                         return
 
-                    # Extract token from the response
                     token = (
                         json_data.get("choices", [{}])[0]
                         .get("delta", {})
                         .get("content", "")
                     )
-
                     if token:
-                        yield token + "\n"
                         ai_response_content += token
+                        yield token + "\n"
 
                 except json.JSONDecodeError:
-                    print(f"Failed to decode JSON: {line}")
+                    # Only log if not a [DONE] message
+                    if "[DONE]" not in line:
+                        print(f"Failed to decode JSON: {line}")
                     continue
 
         except requests.exceptions.RequestException as e:
             error_msg = f"Connection error: {str(e)}"
+            save_messages(chat, prompt, error_msg, is_error=True)
             yield f"Error: {error_msg}\n"
-            Message.objects.create(chat=chat, sender="user", content=prompt)
-            Message.objects.create(
-                chat=chat, sender="ai", content=f"Error: {error_msg}"
-            )
             return
 
-        # Save messages after successful streaming
         if ai_response_content:
-            Message.objects.create(chat=chat, sender="user", content=prompt)
-            Message.objects.create(chat=chat, sender="ai", content=ai_response_content)
+            save_messages(chat, prompt, ai_response_content)
 
     return StreamingHttpResponse(event_stream(), content_type="text/plain")

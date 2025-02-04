@@ -1,51 +1,337 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Perplexity UI Clone</title>
+    <title>Chat Interface</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            sidebar.classList.toggle('-translate-x-full');
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/prism.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism.min.css">
+    <style>
+        :root {
+            --primary: #10a37f;
+            --primary-hover: #0d8466;
+            --background: #ffffff;
+            --message-user: #f0f0f0;
+            --message-ai: #ffffff;
         }
-    </script>
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background: #343541;
+                --message-user: #444654;
+                --message-ai: #343541;
+                --text-primary: #ececf1;
+            }
+        }
+
+        .message-enter {
+            animation: messageEnter 0.3s ease-out;
+        }
+
+        @keyframes messageEnter {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .typing-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            background: var(--message-ai);
+            border-radius: 20px;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            margin: 0 2px;
+            background: #d1d1d1;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        @keyframes typing {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-4px);
+            }
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .prose pre {
+            position: relative;
+        }
+
+        .copy-button {
+            position: absolute;
+            right: 8px;
+            top: 8px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .prose:hover .copy-button {
+            opacity: 1;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white">
+
+<body class="bg-[var(--background)]">
     <div class="flex h-screen">
         <!-- Sidebar -->
-        <aside id="sidebar" class="w-64 bg-gray-800 p-4 space-y-4 fixed inset-y-0 left-0 transform -translate-x-full transition-transform duration-500 ease-in-out z-50">
-            <div class="flex justify-between items-center">
-                <h1 class="text-xl font-bold text-blue-400">Perplexity</h1>
-                <button onclick="toggleSidebar()" class="text-white p-2">✖</button>
+        <aside
+            class="w-64 bg-gray-900 text-white transition-transform duration-300 transform -translate-x-full md:translate-x-0 fixed h-full z-20">
+            <div class="p-4 border-b border-gray-700">
+                <button
+                    class="w-full bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white rounded-lg py-2.5 px-4 font-medium transition-colors">
+                    New Chat
+                </button>
             </div>
-            <nav class="space-y-2">
-                <a href="#" class="block px-4 py-2 bg-gray-700 rounded">Home</a>
-                <a href="#" class="block px-4 py-2 hover:bg-gray-700 rounded">Discover</a>
-                <a href="#" class="block px-4 py-2 hover:bg-gray-700 rounded">Spaces</a>
-                <a href="#" class="block px-4 py-2 hover:bg-gray-700 rounded">Library</a>
-            </nav>
+            <div class="p-4">
+                <h3 class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">History</h3>
+                <ul class="space-y-1">
+                    {% for chat in request.user.chats.all %}
+                    <li>
+                        <a href="#"
+                            class="flex items-center px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors text-gray-300">
+                            <span class="truncate">{{ chat.title }}</span>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
         </aside>
-        
+
         <!-- Main Content -->
-        <main class="flex-1 flex flex-col items-center justify-center ml-0">
-            <button onclick="toggleSidebar()" class="absolute top-4 left-4 bg-gray-700 p-2 rounded z-40">☰</button>
-            <h2 class="text-3xl mb-4">What do you want to know?</h2>
-            <div class="relative w-1/2 flex items-center bg-gray-700 rounded-lg p-3">
-                <button class="mr-2 text-gray-400">📎</button>
-                <input type="text" placeholder="Ask anything..." class="w-full bg-transparent text-white outline-none">
-                <button class="ml-2 text-gray-400">🔍</button>
-                <button class="ml-2 bg-blue-500 px-4 py-1 rounded-lg">➤</button>
+        <main class="flex-1 flex flex-col md:ml-64 transition-all duration-300">
+            <!-- Model Selector -->
+            <div class="sticky top-0 bg-white/90 backdrop-blur-sm border-b z-10">
+                <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-medium text-gray-600">Model:</span>
+                        <select class="px-3 py-1 rounded-lg border text-sm focus:ring-2 focus:ring-[var(--primary)]">
+                            <option value="google/gemini-2.0-flash-exp:free">
+                                Gemini Flash 2.0 Exp
+                            </option>
+                            <option value="google/gemini-2.0-flash-thinking-exp:free">
+                                Gemini 2.0 Flash Thinking
+                            </option>
+                            <option value="deepseek/deepseek-r1:free">
+                                DeepSeek R1
+                            </option>
+                            <option value="google/learnlm-1.5-pro-experimental:free">
+                                LearnLM 1.5 Pro Exp
+                            </option>
+                            <option value="sophosympatheia/rogue-rose-103b-v0.2:free">
+                                Rogue Rose 103B v0.2
+                            </option>
+                            <option value="google/gemma-2-9b-it:free">
+                                Gemma 2 9B
+                            </option>
+                            <option value="meta-llama/llama-3.1-70b-instruct:free">
+                                Llama 3.1 70B Instruct
+                            </option>
+                            <option value="meta-llama/llama-3.1-405b-instruct:free">
+                                Llama 3.1 405B Instruct
+                            </option>
+                            <option value="meta-llama/llama-3.2-1b-instruct:free">
+                                Llama 3.2 1B Instruct
+                            </option>
+                        </select>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span class="text-sm text-gray-500" id="selected-model-name"></span>
+                    </div>
+                </div>
             </div>
-            
-            <!-- Cards Section -->
-            <div class="grid grid-cols-3 gap-4 mt-6">
-                <div class="bg-gray-800 p-4 rounded-lg">Try DeepSeek R1</div>
-                <div class="bg-gray-800 p-4 rounded-lg">☽ 34°F Tashkent</div>
-                <div class="bg-gray-800 p-4 rounded-lg">Meta Creates "War Rooms"</div>
+
+            <!-- Chat Messages -->
+            <div id="chat-messages" class="flex-1 overflow-y-auto scrollbar-hide">
+                <div class="max-w-3xl mx-auto px-4 py-6 space-y-6">
+                    <!-- Messages will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="sticky bottom-0 bg-white/95 backdrop-blur border-t">
+                <div class="max-w-3xl mx-auto px-4 py-4">
+                    <div
+                        class="relative rounded-xl border bg-white shadow-sm focus-within:border-[var(--primary)] transition-all">
+                        <textarea id="chat-input" rows="1" placeholder="Type your message..."
+                            class="w-full px-4 py-3 pr-16 resize-none border-none focus:ring-0 bg-transparent text-gray-800"></textarea>
+                        <div class="absolute right-3 bottom-3 flex space-x-2">
+                            <button id="submit-button"
+                                class="p-2 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const chatInput = document.getElementById('chat-input');
+            const chatMessages = document.getElementById('chat-messages').firstElementChild;
+            const submitButton = document.getElementById('submit-button');
+            let isProcessing = false;
+
+            // Message rendering
+            function createMessageElement(content, isUser = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message-enter ${isUser ? 'text-right' : 'text-left'}`;
+
+                const bubble = document.createElement('div');
+                bubble.className = `inline-block max-w-[85%] p-4 rounded-2xl ${isUser ? 'bg-[var(--message-user)]' : 'bg-[var(--message-ai)] shadow-sm'
+                    } text-left`;
+
+                if (!isUser) {
+                    const copyButton = document.createElement('button');
+                    copyButton.className = 'copy-button p-1 rounded hover:bg-gray-200';
+                    copyButton.innerHTML = `
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    `;
+                    copyButton.addEventListener('click', () => {
+                        navigator.clipboard.writeText(content);
+                    });
+                    bubble.appendChild(copyButton);
+                }
+
+                bubble.innerHTML += marked.parse(content);
+                messageDiv.appendChild(bubble);
+                return messageDiv;
+            }
+
+            // Handle user input
+            async function handleSubmit() {
+                if (isProcessing) return;
+
+                const prompt = chatInput.value.trim();
+                if (!prompt) return;
+
+                // Add user message
+                chatMessages.appendChild(createMessageElement(prompt, true));
+                chatInput.value = '';
+
+                // Add loading indicator
+                const loadingMessage = document.createElement('div');
+                loadingMessage.className = 'text-left message-enter';
+                loadingMessage.innerHTML = `
+                    <div class="inline-block p-4 rounded-2xl bg-[var(--message-ai)]">
+                        <div class="typing-indicator">
+                            <div class="typing-dot"></div>
+                            <div class="typing-dot" style="animation-delay: 0.2s"></div>
+                            <div class="typing-dot" style="animation-delay: 0.4s"></div>
+                        </div>
+                    </div>
+                `;
+                chatMessages.appendChild(loadingMessage);
+
+                // Scroll to bottom
+                chatMessages.parentElement.scrollTo({
+                    top: chatMessages.parentElement.scrollHeight,
+                    behavior: 'smooth'
+                });
+
+                isProcessing = true;
+
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: prompt })
+                    });
+
+                    if (!response.ok) throw new Error('API request failed');
+
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let aiMessage = '';
+
+                    // Remove loading indicator
+                    loadingMessage.remove();
+
+                    // Create AI message container
+                    const aiMessageDiv = createMessageElement('');
+                    chatMessages.appendChild(aiMessageDiv);
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+
+                        aiMessage += decoder.decode(value);
+                        aiMessageDiv.querySelector('div').innerHTML = marked.parse(aiMessage) + `
+                            <div class="typing-indicator mt-2">
+                                <div class="typing-dot"></div>
+                                <div class="typing-dot" style="animation-delay: 0.2s"></div>
+                                <div class="typing-dot" style="animation-delay: 0.4s"></div>
+                            </div>
+                        `;
+
+                        // Highlight code blocks
+                        Prism.highlightAllUnder(aiMessageDiv);
+
+                        // Smooth scroll
+                        aiMessageDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                    }
+
+                    // Remove typing indicator after completion
+                    aiMessageDiv.querySelector('div').innerHTML = marked.parse(aiMessage);
+                    Prism.highlightAllUnder(aiMessageDiv);
+
+                } catch (error) {
+                    console.error('Error:', error);
+                    const errorMessage = createMessageElement(`Error: ${error.message}`);
+                    chatMessages.appendChild(errorMessage);
+                } finally {
+                    isProcessing = false;
+                }
+            }
+
+            // Event listeners
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit();
+                }
+            });
+
+            submitButton.addEventListener('click', handleSubmit);
+
+            // Auto-resize textarea
+            chatInput.addEventListener('input', () => {
+                chatInput.style.height = 'auto';
+                chatInput.style.height = `${Math.min(chatInput.scrollHeight, 200)}px`;
+            });
+        });
+    </script>
 </body>
+
 </html>
