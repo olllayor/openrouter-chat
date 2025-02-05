@@ -602,7 +602,7 @@
               const modelSelector = document.querySelector("select");
               const selectedModel = modelSelector.value;
 
-              const response = await fetch("/api/ask_chat/", {
+              const response = await fetch("/api/groq_chat/", {
                   method: "POST",
                   headers: {
                       "Content-Type": "application/json",
@@ -611,7 +611,7 @@
                   credentials: 'include',  // Include cookies
                   body: JSON.stringify({
                       prompt: prompt,
-                      model: selectedModel,
+                      model: "llama-3.2-11b-vision-preview",
                   }),
                   cache: "no-cache",
                   signal: signal,
