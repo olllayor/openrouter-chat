@@ -14,7 +14,7 @@ if not GEMINI_API_KEY:
 genai.configure(api_key=GEMINI_API_KEY)
 
 
-def stream_gemini_completion(messages, model_name="gemini-1.5-pro-latest"):
+def stream_gemini_completion(messages, model_name="models/gemini-2.0-flash-001"):
     """
     Streams the completion from the Google Gemini API.
 
@@ -37,23 +37,36 @@ def stream_gemini_completion(messages, model_name="gemini-1.5-pro-latest"):
     """
     try:
         model = genai.GenerativeModel(model_name)
-        chat = model.start_chat(history=messages[:-1])  # Initialize the chat with history. Last message is the prompt
-        response = chat.send_message(messages[-1]["content"], stream=True) # Send only last message
-        
+
+        # Format the messages for the Gemini API
+        gemini_messages = []
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            gemini_messages.append(
+                {"role": role, "parts": [content]}
+            )  # correct format for gemini
+
+        # Separate history and prompt
+        history = gemini_messages[:-1]
+        prompt = gemini_messages[-1]["parts"][0]  # Extract content from parts list
+
+        chat = model.start_chat(history=history)
+
+        response = chat.send_message(prompt, stream=True)
         for chunk in response:
-            yield chunk.text  # Yield each token (chunk) from the response
+            yield chunk.text
 
     except Exception as e:
         print(f"Error during Gemini API call: {e}")
-        yield f"Error: {str(e)}" # Yield an error message to the stream.  Crucial for client-side error handling.
+        yield f"Error: {str(e)}"
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Example usage (for testing purposes)
     example_messages = [
-        {'role': 'user', 'content': 'Write a short poem about the ocean.'}
+        {"role": "user", "content": "Write a short poem about the ocean."}
     ]
 
     for token in stream_gemini_completion(example_messages):
-        print(token, end="") # prints the streaming content
+        print(token, end="")

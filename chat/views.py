@@ -134,9 +134,7 @@ def ask_gemini_chat(request):
     try:
         data = json.loads(request.body)
         prompt = data.get("prompt", "")
-        model = data.get(
-            "model", ""
-        )  # Default model if not provided
+        model = data.get("model", "models/gemini-2.0-flash-lite-preview-02-05")
     except Exception:
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
