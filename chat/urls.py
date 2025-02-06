@@ -15,8 +15,8 @@ def check_auth(request):
 
 urlpatterns = [
     path("", views.index, name="index"),
-    # path("api/ask_chat/", views.ask_chat, name="ask_chat"),
-    path("api/groq_chat/", views.ask_groq_chat, name="ask_groq_chat"),
-    # path("api/models/", views.get_models, name="get_models"),
     path("api/auth/check/", check_auth, name="auth_check"),
+    path("api/gemini_chat/", views.ask_gemini_chat, name="ask_gemini_chat"),
+    # path("api/groq_chat/", views.ask_groq_chat, name="ask_groq_chat"),
+    # path("api/models/", views.get_models, name="get_models"),
 ]

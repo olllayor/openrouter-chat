@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 # Load environment variables from a .env file
 load_dotenv()
 
+# This constant remains in views if needed elsewhere.
+OPENROUTER_MODELS_ENDPOINT = (
+    "https://openrouter.ai/api/v1/models?supported_parameters=free"
+)
+
+
 # Get the API key from environment variables
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:

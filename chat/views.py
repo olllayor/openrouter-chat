@@ -8,23 +8,19 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.conf import settings
 
-from chat.groq_client import get_groq_chat_completion
+from chat.gemini_client import stream_gemini_completion
+from chat.groq_client import stream_groq_chat_completion
 from .models import UserProfile, Chat, Message
 from django.contrib.auth.models import User
 
 # Import the streaming function from openrouter.py
-from .openrouter_client import stream_openrouter_response
+from .openrouter_client import stream_openrouter_response, OPENROUTER_MODELS_ENDPOINT
 
 
 # Load environment variables
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# This constant remains in views if needed elsewhere.
-OPENROUTER_MODELS_ENDPOINT = (
-    "https://openrouter.ai/api/v1/models?supported_parameters=free"
-)
 
 
 def index(request):
@@ -48,24 +44,21 @@ def save_messages(chat, prompt, response_content, is_error=False):
 
 # @login_required
 # @csrf_exempt
-# def ask_chat(request):
-#     # Ensure user is authenticated.
-#     if not request.user.is_authenticated:
-#         return JsonResponse(
-#             {
-#                 "error": "Please login to continue",
-#                 "login_url": reverse("admin:login"),
-#             },
-#             status=401,
-#         )
-
-#     # Only allow POST requests.
+# def ask_groq_chat(request):
+#     """
+#     Handle chat requests using Groq API integration with token streaming.
+#     This view builds the chat history, sanitizes roles, appends the user's prompt,
+#     streams tokens from the Groq API using the model name provided by the frontend,
+#     and finally saves the assistant's complete reply to the database.
+#     """
 #     if request.method != "POST":
 #         return JsonResponse({"error": "Only POST allowed."}, status=405)
 
-#     # CSRF token check for AJAX requests.
-#     if not request.headers.get("X-CSRFToken") and not request.META.get("HTTP_X_CSRFTOKEN"):
-#         return HttpResponseForbidden("CSRF token missing")
+#     # Check for CSRF token for AJAX requests.
+#     if not request.headers.get("X-CSRFToken") and not request.META.get(
+#         "HTTP_X_CSRFTOKEN"
+#     ):
+#         return JsonResponse({"error": "CSRF token missing"}, status=403)
 
 #     try:
 #         data = json.loads(request.body)
@@ -79,56 +72,60 @@ def save_messages(chat, prompt, response_content, is_error=False):
 #     chat = (
 #         Chat.objects.get(id=chat_id, user=user)
 #         if chat_id
-#         else Chat.objects.create(user=user, title=f"Chat with {model}")
+#         else Chat.objects.create(user=user, title=f"Chat with Groq ({model})")
 #     )
 #     request.session["chat_id"] = chat.id
 
-#     # Determine which API key to use.
-#     api_key_to_use = os.getenv("OPENROUTER_API_KEY")
-#     try:
-#         user_profile = UserProfile.objects.get(user=user)
-#         if user_profile.api_token:
-#             api_key_to_use = user_profile.api_token
-#     except UserProfile.DoesNotExist:
-#         pass
-
-#     # Retrieve past messages from the chat and add the current prompt.
-#     messages_history = [
+#     # Build raw chat history from stored messages.
+#     raw_chat_history = [
 #         {"role": msg.sender, "content": msg.content}
 #         for msg in Message.objects.filter(chat=chat).order_by("created_at")
 #     ]
-#     messages_history.append({"role": "user", "content": prompt})
 
-#     # Build the payload for the API call.
-#     payload = {"model": model, "messages": messages_history, "stream": True}
-#     headers = {
-#         "Authorization": f"Bearer {api_key_to_use}",
-#         "Content-Type": "application/json",
-#         "HTTP-Referer": request.META.get("HTTP_REFERER", ""),
-#         "X-Title": "Django Chat App",
-#     }
+#     # Sanitize roles: map 'ai' to 'assistant' and ensure valid roles.
+#     valid_roles = {"system", "user", "assistant"}
+#     sanitized_history = []
+#     for message in raw_chat_history:
+#         role = message.get("role")
+#         if role == "ai":
+#             role = "assistant"
+#         if role not in valid_roles:
+#             role = "assistant"
+#         sanitized_history.append({"role": role, "content": message.get("content")})
 
-#     # Define a generator for streaming the response using our separated API logic.
-#     stream_generator = stream_openrouter_response(payload, headers, chat, prompt, save_messages)
+#     # Append the new user prompt.
+#     sanitized_history.append({"role": "user", "content": prompt})
 
-#     return StreamingHttpResponse(stream_generator, content_type="text/plain")
+#     # Create a generator for streaming tokens from Groq.
+#     token_stream = stream_groq_chat_completion(sanitized_history, model=model)
 
+#     # Save the user prompt immediately.
+#     Message.objects.create(chat=chat, sender="user", content=prompt)
 
+#     # Helper generator to stream tokens and accumulate the full reply.
+#     def stream_and_save():
+#         full_reply = ""
+#         for token in token_stream:
+#             full_reply += token
+#             yield token
+#         # After streaming is complete, save the assistant's full reply.
+#         Message.objects.create(chat=chat, sender="assistant", content=full_reply)
 
+#     return StreamingHttpResponse(stream_and_save(), content_type="text/plain")
 
 
 @login_required
 @csrf_exempt
-def ask_groq_chat(request):
+def ask_gemini_chat(request):
     """
-    Handle chat requests using Groq API integration.
-    This view builds the chat history, sanitizes the roles, appends the user's prompt, calls Groq,
-    and then stores and returns the assistant's response.
+    Handle chat requests using Gemini API integration with token streaming.
+    This view builds the chat history, appends the user's prompt,
+    streams tokens from the Gemini API, and saves the assistant's complete reply.
     """
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed."}, status=405)
 
-    # CSRF token check for AJAX requests.
+    # Check for CSRF token for AJAX requests.
     if not request.headers.get("X-CSRFToken") and not request.META.get(
         "HTTP_X_CSRFTOKEN"
     ):
@@ -137,8 +134,9 @@ def ask_groq_chat(request):
     try:
         data = json.loads(request.body)
         prompt = data.get("prompt", "")
-        # Allow selecting a model, with a default value.
-        model = data.get("model", "llama-3.2-11b-vision-preview")
+        model = data.get(
+            "model", ""
+        )  # Default model if not provided
     except Exception:
         return JsonResponse({"error": "Invalid request body."}, status=400)
 
@@ -147,38 +145,52 @@ def ask_groq_chat(request):
     chat = (
         Chat.objects.get(id=chat_id, user=user)
         if chat_id
-        else Chat.objects.create(user=user, title=f"Chat with Groq ({model})")
+        else Chat.objects.create(user=user, title=f"Chat with Gemini ({model})")
     )
     request.session["chat_id"] = chat.id
 
-    # Build chat history from stored messages (ordered by creation time).
+    # Build raw chat history from stored messages.
     raw_chat_history = [
         {"role": msg.sender, "content": msg.content}
         for msg in Message.objects.filter(chat=chat).order_by("created_at")
     ]
 
-    # Map roles to valid values for Groq API.
-    valid_roles = {"system", "user", "assistant"}
+    # Sanitize roles: map 'ai' to 'model' for Gemini API compatibility.
+    valid_roles = {"user", "model"}
     sanitized_history = []
     for message in raw_chat_history:
         role = message.get("role")
-        # Convert 'ai' to 'assistant'
-        if role == "ai":
-            role = "assistant"
-        # If role is not valid, default to 'assistant'
+        if role == "ai" or role == "assistant":  # Handle both 'ai' and 'assistant'
+            role = "model"
         if role not in valid_roles:
-            role = "assistant"
+            role = "user"  # Default to user if role is invalid
         sanitized_history.append({"role": role, "content": message.get("content")})
 
-    # Append the new user prompt to the sanitized chat history.
+    # Append the new user prompt.
     sanitized_history.append({"role": "user", "content": prompt})
 
-    # Get the assistant's reply from Groq API.
-    assistant_reply = get_groq_chat_completion(sanitized_history, model=model)
+    # Create a generator for streaming tokens from Gemini.
+    token_stream = stream_gemini_completion(sanitized_history, model_name=model)
 
-    # Save the user prompt and the assistant's reply in the database.
+    # Save the user prompt immediately.
     Message.objects.create(chat=chat, sender="user", content=prompt)
-    Message.objects.create(chat=chat, sender="assistant", content=assistant_reply)
 
-    # Return the assistant's reply as JSON.
-    return JsonResponse({"response": assistant_reply})
+    # Helper generator to stream tokens and accumulate the full reply.
+    def stream_and_save():
+        full_reply = ""
+        try:
+            for token in token_stream:
+                if "Error:" in token:  # check for error
+                    full_reply += token
+                    yield token
+                    break  # stop streaming the rest
+                full_reply += token
+                yield token
+        except Exception as e:
+            full_reply += f"Error: {str(e)}"
+            yield f"Error: {str(e)}"
+        finally:
+            # After streaming is complete (or an error occurs), save the assistant's full reply.
+            Message.objects.create(chat=chat, sender="ai", content=full_reply)
+
+    return StreamingHttpResponse(stream_and_save(), content_type="text/plain")
