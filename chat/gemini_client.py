@@ -1,6 +1,7 @@
 # gemini_client.py
-import google.generativeai as genai
 import os
+
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,26 +16,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 
 def stream_gemini_completion(messages, model_name="models/gemini-2.0-flash-001"):
-    """
-    Streams the completion from the Google Gemini API.
 
-    Args:
-        messages: A list of dictionaries, where each dictionary represents a message
-                  in the conversation.  Each dictionary should have 'role' and 'content' keys.
-                  Example:
-                  [
-                      {'role': 'user', 'content': 'Hello'},
-                      {'role': 'model', 'content': 'Hi there!'},
-                      {'role': 'user', 'content': 'How are you?'}
-                  ]
-        model_name: The name of the Gemini model to use.  Defaults to "gemini-1.5-pro-latest".
-
-    Yields:
-        str: Individual tokens from the Gemini API's streaming response.
-
-    Raises:
-        Exception: If there's an error communicating with the Gemini API.
-    """
     try:
         model = genai.GenerativeModel(model_name)
 
@@ -43,9 +25,14 @@ def stream_gemini_completion(messages, model_name="models/gemini-2.0-flash-001")
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
-            gemini_messages.append(
-                {"role": role, "parts": [content]}
-            )  # correct format for gemini
+            if isinstance(content, str):
+                gemini_messages.append(
+                    {"role": role, "parts": [content]}
+                )  # correct format for gemini
+            else:  # Assume it's an image
+                gemini_messages.append(
+                    {"role": role, "parts": [content]}
+                )  # correct format for gemini
 
         # Separate history and prompt
         history = gemini_messages[:-1]

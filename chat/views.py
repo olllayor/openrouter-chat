@@ -1,24 +1,20 @@
 # views.py
 import json
-import os
-from django.http import StreamingHttpResponse, JsonResponse, HttpResponseForbidden
+
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.decorators import login_required
-from django.urls import reverse
-from django.conf import settings
-
-from chat.gemini_client import stream_gemini_completion
-from chat.groq_client import stream_groq_chat_completion
-from .models import UserProfile, Chat, Message
-from django.contrib.auth.models import User
-
-# Import the streaming function from openrouter.py
-from .openrouter_client import stream_openrouter_response, OPENROUTER_MODELS_ENDPOINT
-
-
-# Load environment variables
 from dotenv import load_dotenv
+from PIL import Image  # For processing images
+
+# Import Gemini streaming function and other clients as needed.
+from chat.gemini_client import stream_gemini_completion
+
+from .models import Chat, Message, MessageImage
+
+# Import our image conversion utility and Pillow Image.
+from .utils import convert_image_to_webp
 
 load_dotenv()
 
@@ -30,165 +26,104 @@ def index(request):
     return render(request, "chat/index.html")
 
 
-def save_messages(chat, prompt, response_content, is_error=False):
-    """
-    Save the user prompt and the AI's response as Message objects.
-    """
-    Message.objects.create(chat=chat, sender="user", content=prompt)
-    Message.objects.create(
-        chat=chat,
-        sender="ai",
-        content=f"Error: {response_content}" if is_error else response_content,
-    )
-
-
-# @login_required
-# @csrf_exempt
-# def ask_groq_chat(request):
-#     """
-#     Handle chat requests using Groq API integration with token streaming.
-#     This view builds the chat history, sanitizes roles, appends the user's prompt,
-#     streams tokens from the Groq API using the model name provided by the frontend,
-#     and finally saves the assistant's complete reply to the database.
-#     """
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Only POST allowed."}, status=405)
-
-#     # Check for CSRF token for AJAX requests.
-#     if not request.headers.get("X-CSRFToken") and not request.META.get(
-#         "HTTP_X_CSRFTOKEN"
-#     ):
-#         return JsonResponse({"error": "CSRF token missing"}, status=403)
-
-#     try:
-#         data = json.loads(request.body)
-#         prompt = data.get("prompt", "")
-#         model = data.get("model", "")
-#     except Exception:
-#         return JsonResponse({"error": "Invalid request body."}, status=400)
-
-#     user = request.user
-#     chat_id = request.session.get("chat_id")
-#     chat = (
-#         Chat.objects.get(id=chat_id, user=user)
-#         if chat_id
-#         else Chat.objects.create(user=user, title=f"Chat with Groq ({model})")
-#     )
-#     request.session["chat_id"] = chat.id
-
-#     # Build raw chat history from stored messages.
-#     raw_chat_history = [
-#         {"role": msg.sender, "content": msg.content}
-#         for msg in Message.objects.filter(chat=chat).order_by("created_at")
-#     ]
-
-#     # Sanitize roles: map 'ai' to 'assistant' and ensure valid roles.
-#     valid_roles = {"system", "user", "assistant"}
-#     sanitized_history = []
-#     for message in raw_chat_history:
-#         role = message.get("role")
-#         if role == "ai":
-#             role = "assistant"
-#         if role not in valid_roles:
-#             role = "assistant"
-#         sanitized_history.append({"role": role, "content": message.get("content")})
-
-#     # Append the new user prompt.
-#     sanitized_history.append({"role": "user", "content": prompt})
-
-#     # Create a generator for streaming tokens from Groq.
-#     token_stream = stream_groq_chat_completion(sanitized_history, model=model)
-
-#     # Save the user prompt immediately.
-#     Message.objects.create(chat=chat, sender="user", content=prompt)
-
-#     # Helper generator to stream tokens and accumulate the full reply.
-#     def stream_and_save():
-#         full_reply = ""
-#         for token in token_stream:
-#             full_reply += token
-#             yield token
-#         # After streaming is complete, save the assistant's full reply.
-#         Message.objects.create(chat=chat, sender="assistant", content=full_reply)
-
-#     return StreamingHttpResponse(stream_and_save(), content_type="text/plain")
-
-
 @login_required
 @csrf_exempt
 def ask_gemini_chat(request):
     """
-    Handle chat requests using Gemini API integration with token streaming.
-    This view builds the chat history, appends the user's prompt,
-    streams tokens from the Gemini API, and saves the assistant's complete reply.
+    Handle chat requests using the Gemini API, accepting both text prompts and images.
+
+    The view:
+      - Accepts either JSON or multipart/form-data requests.
+      - Extracts a text prompt.
+      - Optionally processes uploaded images (converting to PIL objects for the API and
+        to WEBP for storage).
+      - Builds a contents list starting with the prompt string and any images.
+      - Calls the Gemini API using a streaming response.
+      - Saves the user's prompt and uploaded images, as well as the full AI response.
+
+    Model used: models/gemini-2.0-flash-lite-preview-02-05
     """
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed."}, status=405)
 
-    # Check for CSRF token for AJAX requests.
-    if not request.headers.get("X-CSRFToken") and not request.META.get(
-        "HTTP_X_CSRFTOKEN"
-    ):
-        return JsonResponse({"error": "CSRF token missing"}, status=403)
-
-    try:
-        data = json.loads(request.body)
+    # Determine if the request is JSON or multipart form-data.
+    if request.content_type.startswith("application/json"):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
         prompt = data.get("prompt", "")
         model = data.get("model", "models/gemini-2.0-flash-lite-preview-02-05")
-    except Exception:
-        return JsonResponse({"error": "Invalid request body."}, status=400)
+        # JSON requests typically won't include file uploads.
+        files = []
+    else:
+        # For multipart form-data, get the text fields from POST and files from FILES.
+        prompt = request.POST.get("prompt", "")
+        model = request.POST.get("model", "models/gemini-2.0-flash-lite-preview-02-05")
+        files = request.FILES.getlist("images")
 
+    # Retrieve or create a chat session for the user.
     user = request.user
-    chat_id = request.session.get("chat_id")
-    chat = (
-        Chat.objects.get(id=chat_id, user=user)
-        if chat_id
-        else Chat.objects.create(user=user, title=f"Chat with Gemini ({model})")
-    )
+    chat_id = request.POST.get("chat_id") or request.session.get("chat_id")
+    if chat_id:
+        try:
+            chat = Chat.objects.get(id=chat_id, user=user)
+        except Chat.DoesNotExist:
+            chat = Chat.objects.create(user=user, title=f"Chat with Gemini ({model})")
+    else:
+        chat = Chat.objects.create(user=user, title=f"Chat with Gemini ({model})")
     request.session["chat_id"] = chat.id
 
-    # Build raw chat history from stored messages.
-    raw_chat_history = [
-        {"role": msg.sender, "content": msg.content}
-        for msg in Message.objects.filter(chat=chat).order_by("created_at")
-    ]
+    # Build the payload for the Gemini API.
+    # The first element is the prompt (a string).
+    # Subsequent elements are PIL Image objects for each uploaded image.
+    contents = [{"role": "user", "content": prompt}]
+    pil_images = []
+    for file in files:
+        try:
+            # Open the image as a PIL Image.
+            pil_img = Image.open(file)
+            pil_images.append(pil_img)
+        except Exception:
+            # Log or handle the error as needed; here we simply skip the image.
+            continue
+    # Append all valid images to the contents.
+    for img in pil_images:
+        contents.append({"role": "user", "content": img})
 
-    # Sanitize roles: map 'ai' to 'model' for Gemini API compatibility.
-    valid_roles = {"user", "model"}
-    sanitized_history = []
-    for message in raw_chat_history:
-        role = message.get("role")
-        if role == "ai" or role == "assistant":  # Handle both 'ai' and 'assistant'
-            role = "model"
-        if role not in valid_roles:
-            role = "user"  # Default to user if role is invalid
-        sanitized_history.append({"role": role, "content": message.get("content")})
+    # Save the user prompt in the database.
+    message = Message.objects.create(chat=chat, sender="user", content=prompt)
 
-    # Append the new user prompt.
-    sanitized_history.append({"role": "user", "content": prompt})
+    # For every uploaded file, convert to WEBP and store for record.
+    for file in files:
+        try:
+            webp_image = convert_image_to_webp(file)
+            MessageImage.objects.create(message=message, image=webp_image)
+        except Exception as e:
+            Message.objects.create(
+                chat=chat, sender="system", content=f"Failed to process image: {str(e)}"
+            )
 
-    # Create a generator for streaming tokens from Gemini.
-    token_stream = stream_gemini_completion(sanitized_history, model_name=model)
+    # Call the Gemini API using our streaming function.
+    # We assume that stream_gemini_completion accepts a list of contents including text and images.
+    token_stream = stream_gemini_completion(contents, model_name=model)
 
-    # Save the user prompt immediately.
-    Message.objects.create(chat=chat, sender="user", content=prompt)
-
-    # Helper generator to stream tokens and accumulate the full reply.
+    # Stream the tokens as they arrive and accumulate the full reply.
     def stream_and_save():
         full_reply = ""
         try:
             for token in token_stream:
-                if "Error:" in token:  # check for error
+                if "Error:" in token:
                     full_reply += token
                     yield token
-                    break  # stop streaming the rest
+                    break
                 full_reply += token
                 yield token
         except Exception as e:
             full_reply += f"Error: {str(e)}"
             yield f"Error: {str(e)}"
         finally:
-            # After streaming is complete (or an error occurs), save the assistant's full reply.
+            # Save the full AI response after streaming completes.
             Message.objects.create(chat=chat, sender="ai", content=full_reply)
 
     return StreamingHttpResponse(stream_and_save(), content_type="text/plain")
