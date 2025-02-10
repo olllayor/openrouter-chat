@@ -1,6 +1,7 @@
 # gemini_client.py
 import os
-
+import base64
+from io import BytesIO
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -13,6 +14,7 @@ if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in environment variables.")
 
 genai.configure(api_key=GEMINI_API_KEY)
+
 
 
 def stream_gemini_completion(messages, model_name="models/gemini-2.0-flash-001"):

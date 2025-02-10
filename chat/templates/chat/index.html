@@ -905,8 +905,9 @@
           }
           // Send the message (and attachments, if any)
           sendChatMessage(body, headers, useFormData);
-          // Clear file input after submission.
           attachInput.value = "";
+          imagePreview.innerHTML = ""; // Clear previews after submission
+          imagePreview.classList.add("hidden");
         }
         chatInput.addEventListener("input", resizeTextarea);
         chatInput.addEventListener("keydown", (event) => {
