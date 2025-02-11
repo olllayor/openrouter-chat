@@ -6,14 +6,13 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from dotenv import load_dotenv
-from PIL import Image  # For processing images
+from PIL import Image  # Still useful for processing images if needed
 
-# Import Gemini streaming function and other clients as needed.
+# Removed base64 import since it’s not used anymore
+# from chat.gemini_client import stream_gemini_completion
 from chat.gemini_client import stream_gemini_completion
 
 from .models import Chat, Message, MessageImage
-
-# Import our image conversion utility and Pillow Image.
 from .utils import convert_image_to_webp
 
 load_dotenv()
@@ -31,17 +30,6 @@ def index(request):
 def ask_gemini_chat(request):
     """
     Handle chat requests using the Gemini API, accepting both text prompts and images.
-
-    The view:
-      - Accepts either JSON or multipart/form-data requests.
-      - Extracts a text prompt.
-      - Optionally processes uploaded images (converting to PIL objects for the API and
-        to WEBP for storage).
-      - Builds a contents list starting with the prompt string and any images.
-      - Calls the Gemini API using a streaming response.
-      - Saves the user's prompt and uploaded images, as well as the full AI response.
-
-    Model used: models/gemini-2.0-flash-lite-preview-02-05
     """
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed."}, status=405)
@@ -54,10 +42,8 @@ def ask_gemini_chat(request):
             return JsonResponse({"error": "Invalid JSON."}, status=400)
         prompt = data.get("prompt", "")
         model = data.get("model", "models/gemini-2.0-flash-lite-preview-02-05")
-        # JSON requests typically won't include file uploads.
-        files = []
+        files = []  # JSON requests typically won't include file uploads.
     else:
-        # For multipart form-data, get the text fields from POST and files from FILES.
         prompt = request.POST.get("prompt", "")
         model = request.POST.get("model", "models/gemini-2.0-flash-lite-preview-02-05")
         files = request.FILES.getlist("images")
@@ -75,21 +61,22 @@ def ask_gemini_chat(request):
     request.session["chat_id"] = chat.id
 
     # Build the payload for the Gemini API.
-    # The first element is the prompt (a string).
-    # Subsequent elements are PIL Image objects for each uploaded image.
+    # The first element is the prompt as a text message.
     contents = [{"role": "user", "content": prompt}]
-    pil_images = []
+    image_binaries = []  # This list will hold raw binary data for each valid image.
     for file in files:
         try:
-            # Open the image as a PIL Image.
-            pil_img = Image.open(file)
-            pil_images.append(pil_img)
+            # Read the file's raw binary content.
+            binary_data = file.read()
+            # Reset the file pointer so it can be used later for saving the image.
+            file.seek(0)
+            image_binaries.append(binary_data)
         except Exception:
-            # Log or handle the error as needed; here we simply skip the image.
+            # If an error occurs, skip this file.
             continue
-    # Append all valid images to the contents.
-    for img in pil_images:
-        contents.append({"role": "user", "content": img})
+    # Append binary image data to the contents.
+    for img_data in image_binaries:
+        contents.append({"role": "user", "content": img_data})
 
     # Save the user prompt in the database.
     message = Message.objects.create(chat=chat, sender="user", content=prompt)
@@ -105,25 +92,23 @@ def ask_gemini_chat(request):
             )
 
     # Call the Gemini API using our streaming function.
-    # We assume that stream_gemini_completion accepts a list of contents including text and images.
     token_stream = stream_gemini_completion(contents, model_name=model)
 
-    # Stream the tokens as they arrive and accumulate the full reply.
+    # Stream tokens and save the complete reply.
     def stream_and_save():
         full_reply = ""
         try:
+            # For every token received from the API, append and yield it.
             for token in token_stream:
-                if "Error:" in token:
-                    full_reply += token
-                    yield token
-                    break
                 full_reply += token
-                yield token
+                yield token  # Stream token without breaking on errors.
         except Exception as e:
+            # If an exception occurs, include the error in the full reply.
             full_reply += f"Error: {str(e)}"
             yield f"Error: {str(e)}"
         finally:
             # Save the full AI response after streaming completes.
             Message.objects.create(chat=chat, sender="ai", content=full_reply)
+
 
     return StreamingHttpResponse(stream_and_save(), content_type="text/plain")
