@@ -58,10 +58,11 @@ class MessageImage(models.Model):
 
     def __str__(self):
         return f"Image for Message {self.message.id}"
+
     def clean(self):
         if self.tokens_consumed < 0:
             raise ValidationError("Tokens consumed cannot be negative")
-        
+
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)

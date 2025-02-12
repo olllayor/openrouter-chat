@@ -5,6 +5,8 @@ import google.generativeai as genai
 from PIL import Image  # Import PIL Image if needed for type checking
 from dotenv import load_dotenv
 
+from chat.prompt import SYSTEM_PROMPT
+
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -16,7 +18,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 def stream_gemini_completion(messages, model_name="models/gemini-2.0-flash-001"):
     try:
-        model = genai.GenerativeModel(model_name)
+        model = genai.GenerativeModel(model_name, system_instruction=SYSTEM_PROMPT)
         gemini_messages = []
         for msg in messages:
             role = msg["role"]
@@ -34,6 +36,7 @@ def stream_gemini_completion(messages, model_name="models/gemini-2.0-flash-001")
         # Separate history and prompt.
         history = gemini_messages[:-1]
         prompt = gemini_messages[-1]["parts"][0]
+
 
         chat = model.start_chat(history=history)
         response = chat.send_message(prompt, stream=True)

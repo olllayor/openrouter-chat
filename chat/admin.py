@@ -1,5 +1,6 @@
 # admin.py
 from django.contrib import admin
+from django.utils.html import format_html
 from .models import UserProfile, Chat, Message, MessageImage
 
 
@@ -25,4 +26,14 @@ class MessageAdmin(admin.ModelAdmin):
 
 @admin.register(MessageImage)
 class MessageImageAdmin(admin.ModelAdmin):
-    list_display = ("message", "image")
+    list_display = ("message", "image_thumbnail")
+
+    def image_thumbnail(self, obj):
+        """
+        Returns an HTML image tag for the uploaded image to display a thumbnail in the admin list view.
+        """
+        if obj.image:
+            return format_html('<img src="{}" width="100" height="auto" />', obj.image.url)
+        return "-"
+
+    image_thumbnail.short_description = "Image Preview"
