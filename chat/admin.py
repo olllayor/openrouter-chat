@@ -33,7 +33,9 @@ class MessageImageAdmin(admin.ModelAdmin):
         Returns an HTML image tag for the uploaded image to display a thumbnail in the admin list view.
         """
         if obj.image:
-            return format_html('<img src="{}" width="100" height="auto" />', obj.image.url)
+            return format_html(
+                '<img src="{}" width="100" height="auto" />', obj.image.url
+            )
         return "-"
 
     image_thumbnail.short_description = "Image Preview"
